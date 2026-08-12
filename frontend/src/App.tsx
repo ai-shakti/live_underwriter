@@ -6,9 +6,10 @@ import {
   listReviews,
   resolveReview,
   fetchSamples,
+  uploadDocument,
 } from "./api";
 import { useRecorder } from "./useRecorder";
-import type { Review, SampleApplicant, UnderwriteResponse } from "./types";
+import type { Review, SampleApplicant, UnderwriteResponse, UploadedDoc } from "./types";
 
 const DECISION_STYLES: Record<string, string> = {
   accept: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -39,6 +40,8 @@ export default function App() {
   const [backendUp, setBackendUp] = useState<boolean | null>(null);
   const [transcribing, setTranscribing] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
+  const [uploading, setUploading] = useState(false);
   const recorder = useRecorder();
 
   // Load sample applicants on mount.
@@ -98,7 +101,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const res = await runUnderwrite(transcript);
+      const res = await runUnderwrite(transcript, uploadedDocs);
       setResult(res);
       setBackendUp(true);
     } catch (e) {
@@ -107,6 +110,26 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const doc = await uploadDocument(file);
+      setUploadedDocs((prev) => [...prev, doc]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  }
+
+  function removeDoc(filename: string) {
+    setUploadedDocs((prev) => prev.filter((d) => d.filename !== filename));
   }
 
   async function handleRecordToggle() {
@@ -210,6 +233,37 @@ export default function App() {
             className="w-full rounded-lg border border-slate-300 bg-white p-3 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
             placeholder="Enter the applicant transcript..."
           />
+
+          {/* Document upload */}
+          <div className="mt-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3">
+            <label className="mb-1 block text-xs font-medium text-slate-600">
+              Supporting documents (optional)
+            </label>
+            <input
+              type="file"
+              accept=".pdf"
+              onChange={handleFileUpload}
+              disabled={uploading}
+              className="block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white hover:file:bg-indigo-700"
+            />
+            {uploading && <p className="mt-1 text-xs text-slate-500">Extracting text…</p>}
+            {uploadedDocs.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {uploadedDocs.map((d) => (
+                  <li key={d.filename} className="flex items-center justify-between text-xs text-slate-700">
+                    <span className="truncate">📄 {d.filename}</span>
+                    <button
+                      onClick={() => removeDoc(d.filename)}
+                      className="ml-2 text-rose-500 hover:text-rose-700"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <button
               onClick={handleSubmit}

@@ -55,6 +55,14 @@ class AuditEntry(BaseModel):
     outcome: str = "ok"  # ok | warn | error
 
 
+class UploadedDocument(BaseModel):
+    """A document uploaded by the user for review."""
+
+    filename: str
+    doc_type: str = "uploaded"
+    content: str = ""
+
+
 class UnderwritingState(BaseModel):
     """The full state shared across the underwriting workflow."""
 
@@ -66,3 +74,4 @@ class UnderwritingState(BaseModel):
     transcript: str = ""
     decision: str | None = None
     audit_trail: list[AuditEntry] = Field(default_factory=list)
+    uploaded_documents: list[UploadedDocument] = Field(default_factory=list)

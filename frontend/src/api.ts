@@ -1,4 +1,4 @@
-import type { Review, SampleApplicant, UnderwriteResponse } from "./types";
+import type { Review, SampleApplicant, UnderwriteResponse, UploadedDoc } from "./types";
 
 const BASE = "/api";
 
@@ -9,18 +9,37 @@ export async function fetchSamples(): Promise<SampleApplicant[]> {
   return resp.json();
 }
 
-/** Run the underwriting graph on a transcript. */
-export async function runUnderwrite(transcript: string): Promise<UnderwriteResponse> {
+/** Run the underwriting graph on a transcript (optionally with uploaded docs). */
+export async function runUnderwrite(
+  transcript: string,
+  documents: UploadedDoc[] = []
+): Promise<UnderwriteResponse> {
   const resp = await fetch(`${BASE}/underwrite`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ transcript }),
+    body: JSON.stringify({ transcript, documents }),
   });
   if (!resp.ok) {
     const detail = await resp.text();
     throw new Error(`Underwrite failed (${resp.status}): ${detail}`);
   }
   return resp.json();
+}
+
+/** Upload a document (PDF) and extract its text. */
+export async function uploadDocument(file: File): Promise<{ filename: string; content: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const resp = await fetch(`${BASE}/documents/upload`, {
+    method: "POST",
+    body: form,
+  });
+  if (!resp.ok) {
+    const detail = await resp.text();
+    throw new Error(`Upload failed (${resp.status}): ${detail}`);
+  }
+  const data = await resp.json();
+  return { filename: data.filename, content: data.content };
 }
 
 /** List reviews (optionally pending only). */

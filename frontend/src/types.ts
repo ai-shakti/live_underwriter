@@ -61,3 +61,8 @@ export interface SampleApplicant {
   expected_outcome: string;
   transcript: string;
 }
+
+export interface UploadedDoc {
+  filename: string;
+  content: string;
+}

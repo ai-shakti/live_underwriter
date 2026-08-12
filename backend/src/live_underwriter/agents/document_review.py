@@ -57,6 +57,13 @@ def document_review_node(state: UnderwritingState) -> dict[str, Any]:
     db = _get_db()
     flags: list[str] = []
 
+    # 1. Analyze uploaded documents (from the user).
+    for up in state.uploaded_documents:
+        flags.extend(_analyze_document({"doc_type": up.doc_type, "content": up.content}))
+    if state.uploaded_documents:
+        logger.info("document_review: analyzed %d uploaded document(s)", len(state.uploaded_documents))
+
+    # 2. Analyze known applicant documents from the DB.
     applicant = state.applicant
     if applicant.full_name:
         known = db.get_applicant(applicant.full_name)
@@ -64,11 +71,11 @@ def document_review_node(state: UnderwritingState) -> dict[str, Any]:
             docs = db.get_documents_for_applicant(int(known["id"]))
             for doc in docs:
                 flags.extend(_analyze_document(doc))
-            logger.info("document_review: analyzed %d document(s)", len(docs))
+            logger.info("document_review: analyzed %d DB document(s)", len(docs))
         else:
-            logger.info("document_review: no known applicant, no documents to review")
+            logger.info("document_review: no known applicant, no DB documents to review")
     else:
-        logger.info("document_review: no applicant name, skipping")
+        logger.info("document_review: no applicant name, skipping DB docs")
 
     if flags:
         logger.warning("document_review: %d finding(s): %s", len(flags), flags)

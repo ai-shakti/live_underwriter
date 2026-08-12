@@ -30,6 +30,73 @@ def test_samples_endpoint() -> None:
     assert any(s["name"] == "Maria Garcia" for s in samples)
 
 
+def test_upload_document_extracts_text(monkeypatch) -> None:
+    """Uploading a PDF should extract its text content."""
+
+    def _fake_extract(path):
+        return "Bank statement. One overdraft of $200 this period."
+
+    monkeypatch.setattr("live_underwriter.tools.pdf.extract_pdf_text", _fake_extract)
+    resp = client.post(
+        "/api/documents/upload",
+        files={"file": ("statement.pdf", b"%PDF-fake", "application/pdf")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["filename"] == "statement.pdf"
+    assert "overdraft" in body["content"]
+    assert body["char_count"] > 0
+
+
+def test_upload_document_no_text(monkeypatch) -> None:
+    """A document with no extractable text should return 422."""
+
+    def _fake_extract(path):
+        return ""
+
+    monkeypatch.setattr("live_underwriter.tools.pdf.extract_pdf_text", _fake_extract)
+    resp = client.post(
+        "/api/documents/upload",
+        files={"file": ("blank.pdf", b"%PDF-fake", "application/pdf")},
+    )
+    assert resp.status_code == 422
+
+
+def test_underwrite_with_uploaded_document(monkeypatch) -> None:
+    """Uploaded documents should be analyzed by the document review agent."""
+
+    class _FakeLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {
+                    "content": (
+                        '{"full_name": "Jane Doe", "policy_number": "POL-1001", '
+                        '"coverage_amount": 500000.0, "annual_income": 120000.0}'
+                    )
+                },
+            )()
+
+    monkeypatch.setattr("live_underwriter.agents.normalize.get_llm", lambda: _FakeLLM())
+    resp = client.post(
+        "/api/underwrite",
+        json={
+            "transcript": "Jane Doe policy POL-1001 coverage 500000 income 120000",
+            "documents": [
+                {
+                    "filename": "statement.pdf",
+                    "content": "Bank statement with an overdraft of $200 this period.",
+                }
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    # The uploaded document's overdraft should be flagged.
+    assert any("overdraft" in f for f in body["flags"])
+
+
 def test_get_policy_found() -> None:
     resp = client.get("/api/policies/POL-1001")
     assert resp.status_code == 200

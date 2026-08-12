@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from live_underwriter.db import UnderwritingDB, seed_database
 from live_underwriter.graph import compile_graph
@@ -47,6 +47,7 @@ class UnderwriteRequest(BaseModel):
     """Request body for the underwrite endpoint."""
 
     transcript: str
+    documents: list[dict[str, Any]] = Field(default_factory=list)  # [{filename, content}]
 
 
 class UnderwriteResponse(BaseModel):
@@ -67,6 +68,15 @@ class TranscribeResponse(BaseModel):
     """Response body for the transcribe endpoint."""
 
     transcript: str
+
+
+class DocumentUploadResponse(BaseModel):
+    """Response body for a document upload."""
+
+    filename: str
+    doc_type: str
+    content: str
+    char_count: int
 
 
 class ReviewResponse(BaseModel):
@@ -163,14 +173,58 @@ def transcribe_audio(file: UploadFile = File(...)) -> TranscribeResponse:  # noq
     return TranscribeResponse(transcript=text)
 
 
+@app.post("/api/documents/upload", response_model=DocumentUploadResponse)
+def upload_document(file: UploadFile = File(...)) -> DocumentUploadResponse:  # noqa: B008 - FastAPI injects the upload
+    """Upload a document (PDF) and extract its text for review."""
+    logger.info("api: document upload received: %s", file.filename)
+    filename = file.filename or "document.pdf"
+
+    # Save to a temp file and extract text.
+    suffix = Path(filename).suffix or ".pdf"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(file.file.read())
+        tmp_path = tmp.name
+
+    try:
+        from live_underwriter.tools.pdf import extract_pdf_text
+
+        content = extract_pdf_text(tmp_path)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:  # surface PDF errors to the client
+        logger.error("api: document extraction failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Document extraction failed: {exc}") from exc
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    if not content.strip():
+        raise HTTPException(status_code=422, detail="No text could be extracted from the document")
+
+    return DocumentUploadResponse(
+        filename=filename,
+        doc_type="uploaded",
+        content=content,
+        char_count=len(content),
+    )
+
+
 @app.post("/api/underwrite", response_model=UnderwriteResponse)
 def underwrite(req: UnderwriteRequest) -> UnderwriteResponse:
     """Run the underwriting graph on a transcript and return the result."""
     logger.info("api: underwrite request received")
     _ensure_seeded()
 
+    # Build the state with any uploaded documents.
+    from live_underwriter.state import UploadedDocument
+
+    uploaded = [
+        UploadedDocument(filename=d.get("filename", "document"), content=d.get("content", ""))
+        for d in req.documents
+    ]
     app_graph = compile_graph()
-    result = app_graph.invoke(UnderwritingState(transcript=req.transcript))
+    result = app_graph.invoke(
+        UnderwritingState(transcript=req.transcript, uploaded_documents=uploaded)
+    )
 
     risk = result.get("risk")
     applicant = result.get("applicant")
