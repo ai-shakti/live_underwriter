@@ -15,6 +15,21 @@ def test_health() -> None:
     assert resp.json() == {"status": "ok"}
 
 
+def test_samples_endpoint() -> None:
+    resp = client.get("/api/samples")
+    assert resp.status_code == 200
+    samples = resp.json()
+    assert len(samples) >= 5
+    # Each sample should have a transcript and expected outcome.
+    for s in samples:
+        assert s["name"]
+        assert s["transcript"]
+        assert s["expected_outcome"]
+    # Jane Doe should be present.
+    assert any(s["name"] == "Jane Doe" for s in samples)
+    assert any(s["name"] == "Maria Garcia" for s in samples)
+
+
 def test_get_policy_found() -> None:
     resp = client.get("/api/policies/POL-1001")
     assert resp.status_code == 200

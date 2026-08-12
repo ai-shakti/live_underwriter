@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
-import { runUnderwrite, health, transcribeAudio, listReviews, resolveReview } from "./api";
+import {
+  runUnderwrite,
+  health,
+  transcribeAudio,
+  listReviews,
+  resolveReview,
+  fetchSamples,
+} from "./api";
 import { useRecorder } from "./useRecorder";
-import type { Review, UnderwriteResponse } from "./types";
-
-const SAMPLE_TRANSCRIPT =
-  "My name is Jane Doe, born 1985-04-12, policy POL-1001, coverage 500000, income 120000";
+import type { Review, SampleApplicant, UnderwriteResponse } from "./types";
 
 const DECISION_STYLES: Record<string, string> = {
   accept: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -26,7 +30,9 @@ const OUTCOME_DOT: Record<string, string> = {
 };
 
 export default function App() {
-  const [transcript, setTranscript] = useState(SAMPLE_TRANSCRIPT);
+  const [transcript, setTranscript] = useState("");
+  const [samples, setSamples] = useState<SampleApplicant[]>([]);
+  const [selectedSample, setSelectedSample] = useState<string>("");
   const [result, setResult] = useState<UnderwriteResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +40,28 @@ export default function App() {
   const [transcribing, setTranscribing] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
   const recorder = useRecorder();
+
+  // Load sample applicants on mount.
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await fetchSamples();
+        setSamples(s);
+        if (s.length > 0) {
+          setSelectedSample(s[0].id);
+          setTranscript(s[0].transcript);
+        }
+      } catch {
+        // samples are optional
+      }
+    })();
+  }, []);
+
+  function handleSampleChange(id: string) {
+    setSelectedSample(id);
+    const sample = samples.find((s) => s.id === id);
+    if (sample) setTranscript(sample.transcript);
+  }
 
   async function loadReviews() {
     try {
@@ -144,9 +172,37 @@ export default function App() {
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-1 text-sm font-semibold text-slate-900">Applicant transcript</h2>
           <p className="mb-3 text-xs text-slate-500">
-            Paste the applicant's spoken transcript, or record it live with the mic, then run the
-            underwriting workflow.
+            Pick a sample applicant to test, paste a transcript, or record it live with the mic.
           </p>
+
+          {/* Sample selector */}
+          {samples.length > 0 && (
+            <div className="mb-3">
+              <label className="mb-1 block text-xs font-medium text-slate-600">
+                Sample applicant
+              </label>
+              <select
+                value={selectedSample}
+                onChange={(e) => handleSampleChange(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              >
+                {samples.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} — {s.description}
+                  </option>
+                ))}
+              </select>
+              {selectedSample && (
+                <p className="mt-1 text-xs text-slate-500">
+                  Expected outcome:{" "}
+                  <span className="font-medium text-slate-700">
+                    {samples.find((s) => s.id === selectedSample)?.expected_outcome}
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
+
           <textarea
             value={transcript}
             onChange={(e) => setTranscript(e.target.value)}
@@ -161,12 +217,6 @@ export default function App() {
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? "Running workflow…" : "Run underwriting"}
-            </button>
-            <button
-              onClick={() => setTranscript(SAMPLE_TRANSCRIPT)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
-            >
-              Use sample
             </button>
             <button
               onClick={handleRecordToggle}

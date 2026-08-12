@@ -1,6 +1,13 @@
-import type { Review, UnderwriteResponse } from "./types";
+import type { Review, SampleApplicant, UnderwriteResponse } from "./types";
 
 const BASE = "/api";
+
+/** Fetch curated sample applicants for testing. */
+export async function fetchSamples(): Promise<SampleApplicant[]> {
+  const resp = await fetch(`${BASE}/samples`);
+  if (!resp.ok) throw new Error(`Fetch samples failed (${resp.status})`);
+  return resp.json();
+}
 
 /** Run the underwriting graph on a transcript. */
 export async function runUnderwrite(transcript: string): Promise<UnderwriteResponse> {

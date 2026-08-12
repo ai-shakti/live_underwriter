@@ -53,3 +53,11 @@ export interface Review {
   created_at: string;
   reviewed_at: string | null;
 }
+
+export interface SampleApplicant {
+  id: string;
+  name: string;
+  description: string;
+  expected_outcome: string;
+  transcript: string;
+}

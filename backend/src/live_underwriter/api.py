@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from live_underwriter.db import UnderwritingDB, seed_database
 from live_underwriter.graph import compile_graph
 from live_underwriter.logging_conf import get_logger, setup_logging
+from live_underwriter.samples import get_samples
 from live_underwriter.state import ApplicantInfo, PolicyRecord, RiskAssessment, UnderwritingState
 
 logger = get_logger(__name__)
@@ -124,6 +125,12 @@ def _to_review_response(row: dict[str, Any]) -> ReviewResponse:
 def health() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+@app.get("/api/samples")
+def samples() -> list[dict[str, Any]]:
+    """Return curated sample applicants for testing the workflow."""
+    return get_samples()
 
 
 @app.post("/api/transcribe", response_model=TranscribeResponse)
