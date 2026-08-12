@@ -9,6 +9,7 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from live_underwriter.agents._helpers import append_audit
+from live_underwriter.dates import normalize_dob
 from live_underwriter.llm import get_llm
 from live_underwriter.logging_conf import get_logger
 from live_underwriter.state import ApplicantInfo, UnderwritingState
@@ -20,7 +21,8 @@ data from the applicant's spoken transcript. Return ONLY a JSON object with thes
 (use null when a value is not present):
 full_name, date_of_birth, email, phone, address, policy_number, coverage_amount,
 occupation, annual_income.
-Do not invent data that is not in the transcript."""
+For date_of_birth, return the date as the applicant stated it (e.g. "April 12, 1985"
+or "12/04/1985") — do not reformat it. Do not invent data that is not in the transcript."""
 
 
 def _repair_json(raw: str) -> str:
@@ -104,6 +106,15 @@ def normalize_node(state: UnderwritingState) -> dict[str, Any]:
             applicant = _parse_applicant(str(response.content))
         except Exception as exc:  # noqa: BLE001
             logger.error("normalize: retry LLM call failed: %s", exc)
+
+    # Normalize the DOB to a canonical YYYY-MM-DD regardless of the format
+    # the LLM returned (e.g. "April 12, 1985", "12/04/1985", "04-12-85").
+    if applicant.date_of_birth:
+        normalized_dob = normalize_dob(applicant.date_of_birth)
+        if normalized_dob:
+            applicant.date_of_birth = normalized_dob
+        else:
+            logger.warning("normalize: could not normalize DOB %r", applicant.date_of_birth)
 
     logger.info("normalize: extracted applicant %s", applicant.full_name)
     return {

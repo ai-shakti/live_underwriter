@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { runUnderwrite, health, transcribeAudio } from "./api";
+import { runUnderwrite, health, transcribeAudio, listReviews, resolveReview } from "./api";
 import { useRecorder } from "./useRecorder";
-import type { UnderwriteResponse } from "./types";
+import type { Review, UnderwriteResponse } from "./types";
 
 const SAMPLE_TRANSCRIPT =
   "My name is Jane Doe, born 1985-04-12, policy POL-1001, coverage 500000, income 120000";
@@ -32,7 +32,30 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [backendUp, setBackendUp] = useState<boolean | null>(null);
   const [transcribing, setTranscribing] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const recorder = useRecorder();
+
+  async function loadReviews() {
+    try {
+      const r = await listReviews(true);
+      setReviews(r);
+    } catch {
+      // ignore — reviews are optional
+    }
+  }
+
+  useEffect(() => {
+    loadReviews();
+  }, []);
+
+  async function handleResolve(id: number, status: "approved" | "declined") {
+    try {
+      await resolveReview(id, status);
+      await loadReviews();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to resolve review");
+    }
+  }
 
   async function checkHealth() {
     try {
@@ -259,6 +282,64 @@ export default function App() {
             </div>
           </section>
         )}
+
+        {/* Human-in-the-loop review queue */}
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-900">Human review queue</h2>
+            <button
+              onClick={loadReviews}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+            >
+              Refresh
+            </button>
+          </div>
+          {reviews.length === 0 ? (
+            <p className="text-sm text-slate-500">No pending reviews. Flagged cases will appear here.</p>
+          ) : (
+            <ul className="space-y-3">
+              {reviews.map((r) => (
+                <li key={r.id} className="rounded-lg border border-slate-200 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">{r.applicant_name}</p>
+                      <p className="text-xs text-slate-500">
+                        {r.policy_number ?? "No policy"} · AI: {r.ai_decision} · Risk {r.risk_score} ({r.risk_level})
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                      pending
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-600">{r.rationale}</p>
+                  {r.flags.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {r.flags.map((f, i) => (
+                        <span key={i} className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700">
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => handleResolve(r.id, "approved")}
+                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleResolve(r.id, "declined")}
+                      className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </main>
     </div>
   );

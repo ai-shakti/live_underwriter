@@ -79,6 +79,31 @@ def test_document_review_risk_keyword(db: UnderwritingDB) -> None:
     assert any("overdraft" in f for f in out["risk"].flags)
 
 
+def test_document_review_alice_clean(db: UnderwritingDB) -> None:
+    """Alice Johnson has clean documents -> no flags."""
+    state = _state(applicant=ApplicantInfo(full_name="Alice Johnson"))
+    out = document_review_node(state)
+    assert out["audit_trail"][-1].outcome == "ok"
+
+
+def test_document_review_robert_clean(db: UnderwritingDB) -> None:
+    """Robert Chen has clean documents -> no flags (high risk comes from coverage)."""
+    state = _state(applicant=ApplicantInfo(full_name="Robert Chen"))
+    out = document_review_node(state)
+    assert out["audit_trail"][-1].outcome == "ok"
+
+
+def test_document_review_maria_flagged(db: UnderwritingDB) -> None:
+    """Maria Garcia has overdrafts + delinquent + default -> flagged."""
+    state = _state(applicant=ApplicantInfo(full_name="Maria Garcia"))
+    out = document_review_node(state)
+    assert out["audit_trail"][-1].outcome == "warn"
+    flags = " ".join(out["risk"].flags)
+    assert "overdraft" in flags
+    assert "delinquent" in flags
+    assert "default" in flags
+
+
 # ---- voice tools ----
 def test_stt_raises_without_dependency() -> None:
     # Simulate faster-whisper not installed by forcing ImportError.

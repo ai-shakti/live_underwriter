@@ -1,4 +1,4 @@
-import type { UnderwriteResponse } from "./types";
+import type { Review, UnderwriteResponse } from "./types";
 
 const BASE = "/api";
 
@@ -12,6 +12,31 @@ export async function runUnderwrite(transcript: string): Promise<UnderwriteRespo
   if (!resp.ok) {
     const detail = await resp.text();
     throw new Error(`Underwrite failed (${resp.status}): ${detail}`);
+  }
+  return resp.json();
+}
+
+/** List reviews (optionally pending only). */
+export async function listReviews(pendingOnly = false): Promise<Review[]> {
+  const resp = await fetch(`${BASE}/reviews?pending_only=${pendingOnly}`);
+  if (!resp.ok) throw new Error(`List reviews failed (${resp.status})`);
+  return resp.json();
+}
+
+/** Approve or decline a review. */
+export async function resolveReview(
+  id: number,
+  status: "approved" | "declined",
+  reviewerNote?: string
+): Promise<Review> {
+  const resp = await fetch(`${BASE}/reviews/${id}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, reviewer_note: reviewerNote }),
+  });
+  if (!resp.ok) {
+    const detail = await resp.text();
+    throw new Error(`Resolve review failed (${resp.status}): ${detail}`);
   }
   return resp.json();
 }

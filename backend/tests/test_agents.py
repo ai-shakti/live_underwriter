@@ -64,6 +64,35 @@ def test_normalize_tolerates_markdown_fences(monkeypatch: pytest.MonkeyPatch) ->
     assert out["applicant"].full_name == "John Smith"
 
 
+def test_normalize_normalizes_dob(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The normalize agent should convert any DOB format to YYYY-MM-DD."""
+    class FakeLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {"content": '{"full_name": "Jane Doe", "date_of_birth": "April 12, 1985"}'},
+            )()
+
+    monkeypatch.setattr("live_underwriter.agents.normalize.get_llm", lambda: FakeLLM())
+    out = normalize_node(_state(transcript="Jane Doe born April 12 1985"))
+    assert out["applicant"].date_of_birth == "1985-04-12"
+
+
+def test_normalize_normalizes_numeric_dob(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {"content": '{"full_name": "Jane Doe", "date_of_birth": "12/04/1985"}'},
+            )()
+
+    monkeypatch.setattr("live_underwriter.agents.normalize.get_llm", lambda: FakeLLM())
+    out = normalize_node(_state(transcript="Jane Doe born 12/04/1985"))
+    assert out["applicant"].date_of_birth == "1985-04-12"
+
+
 # ---- JSON repair ----
 def test_parse_applicant_trailing_comma() -> None:
     a = _parse_applicant('{"full_name": "Jane Doe", "policy_number": "POL-1001",}')

@@ -66,6 +66,21 @@ CREATE TABLE IF NOT EXISTS audit_log (
     detail      TEXT NOT NULL,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS reviews (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    applicant_name  TEXT NOT NULL,
+    policy_number   TEXT,
+    risk_score      REAL NOT NULL DEFAULT 0,
+    risk_level      TEXT NOT NULL DEFAULT 'low',
+    ai_decision     TEXT NOT NULL,          -- accept | decline | review
+    rationale       TEXT NOT NULL DEFAULT '',
+    flags           TEXT NOT NULL DEFAULT '',  -- JSON list of flags
+    status          TEXT NOT NULL DEFAULT 'pending',  -- pending | approved | declined
+    reviewer_note   TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    reviewed_at     TEXT
+);
 """
 
 
@@ -152,6 +167,55 @@ class UnderwritingDB:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    # ---- human-in-the-loop reviews ----
+    def create_review(self, review: dict[str, Any]) -> int:
+        """Create a review record for a flagged case. Returns the review id."""
+        cur = self._conn.execute(
+            """
+            INSERT INTO reviews (applicant_name, policy_number, risk_score, risk_level,
+                                 ai_decision, rationale, flags)
+            VALUES (:applicant_name, :policy_number, :risk_score, :risk_level,
+                    :ai_decision, :rationale, :flags)
+            """,
+            review,
+        )
+        self._conn.commit()
+        lastrowid = cur.lastrowid
+        if lastrowid is None:
+            raise RuntimeError("Failed to create review: no row id returned")
+        return int(lastrowid)
+
+    def get_review(self, review_id: int) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT * FROM reviews WHERE id = ?", (review_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_pending_reviews(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT * FROM reviews WHERE status = 'pending' ORDER BY id DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_all_reviews(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT * FROM reviews ORDER BY id DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def resolve_review(self, review_id: int, status: str, reviewer_note: str | None = None) -> bool:
+        """Approve or decline a review. Returns True if updated."""
+        cur = self._conn.execute(
+            """
+            UPDATE reviews
+            SET status = ?, reviewer_note = ?, reviewed_at = datetime('now')
+            WHERE id = ? AND status = 'pending'
+            """,
+            (status, reviewer_note, review_id),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
     def close(self) -> None:
         self._conn.close()
 
@@ -188,6 +252,37 @@ def seed_database(db: UnderwritingDB) -> None:
             "verified": 0,
         }
     )
+    # Additional policies for the 3 test applicants.
+    db.upsert_policy(
+        {
+            "policy_number": "POL-2001",
+            "policy_holder": "Alice Johnson",
+            "status": "active",
+            "coverage_amount": 250000.0,
+            "premium": 900.0,
+            "verified": 1,
+        }
+    )
+    db.upsert_policy(
+        {
+            "policy_number": "POL-2002",
+            "policy_holder": "Robert Chen",
+            "status": "active",
+            "coverage_amount": 1000000.0,
+            "premium": 4500.0,
+            "verified": 1,
+        }
+    )
+    db.upsert_policy(
+        {
+            "policy_number": "POL-2003",
+            "policy_holder": "Maria Garcia",
+            "status": "active",
+            "coverage_amount": 150000.0,
+            "premium": 600.0,
+            "verified": 1,
+        }
+    )
 
     # Known applicant (for fraud mismatch checks)
     if db.get_applicant("Jane Doe") is None:
@@ -212,6 +307,9 @@ def seed_database(db: UnderwritingDB) -> None:
              "456 Oak Ave, Riverton", "Business Owner", 90000.0),
         )
         db._conn.commit()
+
+    # Three more applicants with filled documents for underwriting testing.
+    _seed_extra_applicants(db)
 
     # Mock supporting documents (realistic content).
     _seed_documents(db)
@@ -243,6 +341,9 @@ def _seed_documents(db: UnderwritingDB) -> None:
 
     jane = db.get_applicant("Jane Doe")
     john = db.get_applicant("John Smith")
+    alice = db.get_applicant("Alice Johnson")
+    robert = db.get_applicant("Robert Chen")
+    maria = db.get_applicant("Maria Garcia")
 
     docs = []
     if jane:
@@ -298,6 +399,91 @@ def _seed_documents(db: UnderwritingDB) -> None:
                 },
             ]
         )
+    if alice:
+        docs.extend(
+            [
+                {
+                    "applicant_id": alice["id"],
+                    "doc_type": "bank_statement",
+                    "content": (
+                        "Lakeview Community Bank — Monthly Statement — Alice Johnson. "
+                        "Opening balance $8,900.00. Deposits $4,500.00. "
+                        "Ending balance $13,400.00. Account in good standing, no overdrafts."
+                    ),
+                },
+                {
+                    "applicant_id": alice["id"],
+                    "doc_type": "tax_return",
+                    "content": (
+                        "2025 Federal Tax Return — Alice Johnson. Adjusted gross income "
+                        "$64,000.00. Filing status: single. No delinquent accounts, "
+                        "no defaults."
+                    ),
+                },
+                {
+                    "applicant_id": alice["id"],
+                    "doc_type": "id",
+                    "content": (
+                        "State Driver License — Alice Johnson, DOB 1990-03-03, "
+                        "Address 789 Pine St, Lakeview. Valid."
+                    ),
+                },
+            ]
+        )
+    if robert:
+        docs.extend(
+            [
+                {
+                    "applicant_id": robert["id"],
+                    "doc_type": "bank_statement",
+                    "content": (
+                        "Hillcrest National Bank — Monthly Statement — Robert Chen. "
+                        "Opening balance $45,000.00. Deposits $25,000.00. "
+                        "Ending balance $70,000.00. Account in good standing."
+                    ),
+                },
+                {
+                    "applicant_id": robert["id"],
+                    "doc_type": "tax_return",
+                    "content": (
+                        "2025 Federal Tax Return — Robert Chen. Adjusted gross income "
+                        "$295,000.00. Filing status: married. No delinquent accounts."
+                    ),
+                },
+                {
+                    "applicant_id": robert["id"],
+                    "doc_type": "id",
+                    "content": (
+                        "State Driver License — Robert Chen, DOB 1975-11-20, "
+                        "Address 1010 Maple Dr, Hillcrest. Valid."
+                    ),
+                },
+            ]
+        )
+    if maria:
+        docs.extend(
+            [
+                {
+                    "applicant_id": maria["id"],
+                    "doc_type": "bank_statement",
+                    "content": (
+                        "Brookfield Savings — Monthly Statement — Maria Garcia. "
+                        "Opening balance $1,200.00. Two overdrafts this period "
+                        "totaling $180.00. Insufficient funds notice issued on "
+                        "the 3rd and 19th."
+                    ),
+                },
+                {
+                    "applicant_id": maria["id"],
+                    "doc_type": "tax_return",
+                    "content": (
+                        "2025 Federal Tax Return — Maria Garcia. Adjusted gross income "
+                        "$42,000.00. Filing status: single. Prior year had a "
+                        "delinquent balance and a default on a personal loan."
+                    ),
+                },
+            ]
+        )
 
     for doc in docs:
         db._conn.execute(
@@ -306,3 +492,55 @@ def _seed_documents(db: UnderwritingDB) -> None:
         )
     db._conn.commit()
     logger.info("Seeded %d mock documents", len(docs))
+
+
+def _seed_extra_applicants(db: UnderwritingDB) -> None:
+    """Seed 3 more applicants with filled documents for underwriting testing.
+
+    Each has a distinct risk profile so the document review + risk scoring
+    can be exercised:
+      - Alice Johnson: clean, low risk.
+      - Robert Chen: high coverage, high premium -> high risk.
+      - Maria Garcia: overdraft + delinquent -> flagged by document review.
+    """
+    extras: list[dict[str, Any]] = [
+        {
+            "full_name": "Alice Johnson",
+            "date_of_birth": "1990-03-03",
+            "email": "alice.johnson@example.com",
+            "phone": "555-0300",
+            "address": "789 Pine St, Lakeview",
+            "occupation": "Teacher",
+            "annual_income": 65000.0,
+        },
+        {
+            "full_name": "Robert Chen",
+            "date_of_birth": "1975-11-20",
+            "email": "robert.chen@example.com",
+            "phone": "555-0400",
+            "address": "1010 Maple Dr, Hillcrest",
+            "occupation": "Surgeon",
+            "annual_income": 300000.0,
+        },
+        {
+            "full_name": "Maria Garcia",
+            "date_of_birth": "1988-07-15",
+            "email": "maria.garcia@example.com",
+            "phone": "555-0500",
+            "address": "2020 Cedar Ln, Brookfield",
+            "occupation": "Retail Manager",
+            "annual_income": 45000.0,
+        },
+    ]
+    for a in extras:
+        if db.get_applicant(a["full_name"]) is None:
+            db._conn.execute(
+                """
+                INSERT INTO applicants (full_name, date_of_birth, email, phone, address, occupation, annual_income)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (a["full_name"], a["date_of_birth"], a["email"], a["phone"],
+                 a["address"], a["occupation"], a["annual_income"]),
+            )
+    db._conn.commit()
+    logger.info("Seeded 3 extra applicants")

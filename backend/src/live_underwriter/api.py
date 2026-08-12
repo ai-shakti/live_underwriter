@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from live_underwriter.db import UnderwritingDB, seed_database
 from live_underwriter.graph import compile_graph
 from live_underwriter.logging_conf import get_logger, setup_logging
-from live_underwriter.state import UnderwritingState
+from live_underwriter.state import ApplicantInfo, PolicyRecord, RiskAssessment, UnderwritingState
 
 logger = get_logger(__name__)
 
@@ -68,11 +68,56 @@ class TranscribeResponse(BaseModel):
     transcript: str
 
 
+class ReviewResponse(BaseModel):
+    """Response body for a review record."""
+
+    id: int
+    applicant_name: str
+    policy_number: str | None
+    risk_score: float
+    risk_level: str
+    ai_decision: str
+    rationale: str
+    flags: list[str]
+    status: str
+    reviewer_note: str | None
+    created_at: str
+    reviewed_at: str | None
+
+
+class ResolveReviewRequest(BaseModel):
+    """Request body to approve/decline a review."""
+
+    status: str  # approved | declined
+    reviewer_note: str | None = None
+
+
 def _ensure_seeded() -> None:
     """Seed the DB if needed so policy lookups work."""
     db = UnderwritingDB()
     seed_database(db)
     db.close()
+
+
+def _to_review_response(row: dict[str, Any]) -> ReviewResponse:
+    """Convert a DB review row to a ReviewResponse."""
+    import json
+
+    flags = json.loads(row.get("flags") or "[]")
+    return ReviewResponse(
+        id=row["id"],
+        applicant_name=row["applicant_name"],
+        policy_number=row.get("policy_number"),
+        risk_score=row["risk_score"],
+        risk_level=row["risk_level"],
+        ai_decision=row["ai_decision"],
+        rationale=row["rationale"],
+        flags=flags,
+        status=row["status"],
+        reviewer_note=row.get("reviewer_note"),
+        created_at=row["created_at"],
+        reviewed_at=row.get("reviewed_at"),
+    )
 
 
 @app.get("/api/health")
@@ -124,6 +169,14 @@ def underwrite(req: UnderwriteRequest) -> UnderwriteResponse:
     applicant = result.get("applicant")
     policy = result.get("policy")
 
+    # Human-in-the-loop: if the case is flagged or needs review, create a review.
+    needs_review = (
+        risk is not None
+        and (risk.risk_level == "high" or risk.decision == "review" or len(risk.flags) > 0)
+    )
+    if needs_review:
+        _create_review_for_result(applicant, policy, risk)
+
     return UnderwriteResponse(
         stage=result.get("stage", "intake"),
         decision=result.get("decision"),
@@ -135,6 +188,84 @@ def underwrite(req: UnderwriteRequest) -> UnderwriteResponse:
         policy=policy.model_dump() if policy else None,
         audit_trail=[e.model_dump() for e in result.get("audit_trail", [])],
     )
+
+
+def _create_review_for_result(
+    applicant: ApplicantInfo | None,
+    policy: PolicyRecord | None,
+    risk: RiskAssessment | None,
+) -> None:
+    """Create a review record for a flagged/high-risk case."""
+    import json
+
+    if risk is None:
+        logger.warning("api: cannot create review without a risk assessment")
+        return
+
+    db = UnderwritingDB()
+    try:
+        db.create_review(
+            {
+                "applicant_name": applicant.full_name if applicant else "Unknown",
+                "policy_number": policy.policy_number if policy else None,
+                "risk_score": risk.risk_score,
+                "risk_level": risk.risk_level,
+                "ai_decision": risk.decision,
+                "rationale": risk.rationale,
+                "flags": json.dumps(risk.flags),
+            }
+        )
+        logger.info("api: created review for %s", applicant.full_name if applicant else "Unknown")
+    finally:
+        db.close()
+
+
+@app.get("/api/reviews", response_model=list[ReviewResponse])
+def list_reviews(pending_only: bool = False) -> list[ReviewResponse]:
+    """List reviews, optionally only pending ones."""
+    _ensure_seeded()
+    db = UnderwritingDB()
+    try:
+        rows = db.get_pending_reviews() if pending_only else db.get_all_reviews()
+        return [_to_review_response(r) for r in rows]
+    finally:
+        db.close()
+
+
+@app.get("/api/reviews/{review_id}", response_model=ReviewResponse)
+def get_review(review_id: int) -> ReviewResponse:
+    """Get a single review by id."""
+    _ensure_seeded()
+    db = UnderwritingDB()
+    try:
+        row = db.get_review(review_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"Review {review_id} not found")
+        return _to_review_response(row)
+    finally:
+        db.close()
+
+
+@app.post("/api/reviews/{review_id}/resolve", response_model=ReviewResponse)
+def resolve_review(review_id: int, req: ResolveReviewRequest) -> ReviewResponse:
+    """Approve or decline a pending review (human decision)."""
+    if req.status not in ("approved", "declined"):
+        raise HTTPException(status_code=400, detail="status must be 'approved' or 'declined'")
+    _ensure_seeded()
+    db = UnderwritingDB()
+    try:
+        updated = db.resolve_review(review_id, req.status, req.reviewer_note)
+        if not updated:
+            row = db.get_review(review_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail=f"Review {review_id} not found")
+            raise HTTPException(status_code=409, detail="Review already resolved")
+        row = db.get_review(review_id)
+        if row is None:
+            raise HTTPException(status_code=500, detail="Review disappeared after resolve")
+        return _to_review_response(row)
+    finally:
+        db.close()
 
 
 @app.get("/api/policies/{policy_number}")

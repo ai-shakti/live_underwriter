@@ -44,6 +44,7 @@ dependencies = [
     "uvicorn[standard]>=0.29.0",
     "python-multipart>=0.0.9",
     "pydantic-settings>=2.0.0",
+    "pypdf>=6.15.0",
 ]
 
 [project.optional-dependencies]

@@ -93,3 +93,83 @@ def test_transcribe_returns_503_without_voice_deps(monkeypatch) -> None:
     )
     assert resp.status_code == 503
     assert "faster-whisper" in resp.json()["detail"]
+
+
+# ---- human-in-the-loop review ----
+def test_underwrite_creates_review_for_flagged_case(monkeypatch) -> None:
+    """A high-risk/flagged case should create a review record."""
+
+    class _FlaggedLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {
+                    "content": (
+                        '{"full_name": "Maria Garcia", "policy_number": "POL-2003", '
+                        '"coverage_amount": 150000.0, "annual_income": 45000.0}'
+                    )
+                },
+            )()
+
+    monkeypatch.setattr("live_underwriter.agents.normalize.get_llm", lambda: _FlaggedLLM())
+    resp = client.post(
+        "/api/underwrite",
+        json={"transcript": "Maria Garcia policy POL-2003 coverage 150000 income 45000"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    # Maria's docs are flagged -> a review should exist.
+    assert len(body["flags"]) > 0
+
+    reviews = client.get("/api/reviews?pending_only=true").json()
+    assert any(r["applicant_name"] == "Maria Garcia" for r in reviews)
+
+
+def test_review_list_and_resolve(monkeypatch) -> None:
+    """A review can be listed and resolved (approved/declined)."""
+
+    class _FlaggedLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {
+                    "content": (
+                        '{"full_name": "Maria Garcia", "policy_number": "POL-2003", '
+                        '"coverage_amount": 150000.0, "annual_income": 45000.0}'
+                    )
+                },
+            )()
+
+    monkeypatch.setattr("live_underwriter.agents.normalize.get_llm", lambda: _FlaggedLLM())
+    client.post(
+        "/api/underwrite",
+        json={"transcript": "Maria Garcia policy POL-2003 coverage 150000 income 45000"},
+    )
+
+    # Find Maria's pending review.
+    reviews = client.get("/api/reviews?pending_only=true").json()
+    maria = next(r for r in reviews if r["applicant_name"] == "Maria Garcia")
+
+    # Resolve it.
+    resp = client.post(
+        f"/api/reviews/{maria['id']}/resolve",
+        json={"status": "approved", "reviewer_note": "Verified docs manually"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "approved"
+    assert body["reviewer_note"] == "Verified docs manually"
+
+    # It should no longer be pending.
+    pending = client.get("/api/reviews?pending_only=true").json()
+    assert all(r["id"] != maria["id"] for r in pending)
+
+
+def test_review_resolve_invalid_status() -> None:
+    resp = client.post(
+        "/api/reviews/1/resolve",
+        json={"status": "maybe"},
+    )
+    assert resp.status_code == 400

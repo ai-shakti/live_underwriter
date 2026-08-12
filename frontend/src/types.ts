@@ -38,3 +38,18 @@ export interface UnderwriteResponse {
   policy: PolicyRecord | null;
   audit_trail: AuditEntry[];
 }
+
+export interface Review {
+  id: number;
+  applicant_name: string;
+  policy_number: string | null;
+  risk_score: number;
+  risk_level: "low" | "medium" | "high";
+  ai_decision: string;
+  rationale: string;
+  flags: string[];
+  status: "pending" | "approved" | "declined";
+  reviewer_note: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+}
