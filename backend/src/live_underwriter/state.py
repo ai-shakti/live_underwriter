@@ -6,7 +6,7 @@ underwriting agent team. Each agent reads from and writes to this state.
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated, Any
 
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
@@ -15,15 +15,15 @@ from pydantic import BaseModel, Field
 class ApplicantInfo(BaseModel):
     """Normalized applicant data collected during intake."""
 
-    full_name: Optional[str] = None
-    date_of_birth: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
-    policy_number: Optional[str] = None
-    coverage_amount: Optional[float] = None
-    occupation: Optional[str] = None
-    annual_income: Optional[float] = None
+    full_name: str | None = None
+    date_of_birth: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    policy_number: str | None = None
+    coverage_amount: float | None = None
+    occupation: str | None = None
+    annual_income: float | None = None
 
 
 class PolicyRecord(BaseModel):
@@ -47,13 +47,22 @@ class RiskAssessment(BaseModel):
     flags: list[str] = Field(default_factory=list)
 
 
+class AuditEntry(BaseModel):
+    """A single step in the underwriting audit trail (explainability)."""
+
+    stage: str
+    detail: str
+    outcome: str = "ok"  # ok | warn | error
+
+
 class UnderwritingState(BaseModel):
     """The full state shared across the underwriting workflow."""
 
-    messages: Annotated[list, add_messages] = Field(default_factory=list)
+    messages: Annotated[list[Any], add_messages] = Field(default_factory=list)
     applicant: ApplicantInfo = Field(default_factory=ApplicantInfo)
-    policy: Optional[PolicyRecord] = None
+    policy: PolicyRecord | None = None
     risk: RiskAssessment = Field(default_factory=RiskAssessment)
     stage: str = "intake"
     transcript: str = ""
-    decision: Optional[str] = None
+    decision: str | None = None
+    audit_trail: list[AuditEntry] = Field(default_factory=list)

@@ -7,6 +7,7 @@ mirrors the underwriting analyst's decision process.
 from __future__ import annotations
 
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from live_underwriter.agents import (
     document_review_node,
@@ -20,7 +21,7 @@ from live_underwriter.agents import (
 from live_underwriter.state import UnderwritingState
 
 
-def build_graph() -> StateGraph:
+def build_graph() -> StateGraph[UnderwritingState]:
     """Build and return the underwriting workflow graph."""
     graph = StateGraph(UnderwritingState)
 
@@ -60,6 +61,6 @@ def _policy_gate(state: UnderwritingState) -> str:
     return "reject"
 
 
-def compile_graph():
+def compile_graph() -> CompiledStateGraph[UnderwritingState]:
     """Compile the graph into a runnable application."""
     return build_graph().compile()

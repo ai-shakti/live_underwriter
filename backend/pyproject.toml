@@ -37,13 +37,19 @@ dependencies = [
     "langgraph>=0.2.0",
     "langchain-core>=0.3.0",
     "langchain-openai>=0.2.0",
+    "langchain-ollama>=0.2.0",
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "python-multipart>=0.0.9",
+    "pydantic-settings>=2.0.0",
 ]
 
 [project.optional-dependencies]
 voice = [
-    "openai-whisper>=20231117",
+    "faster-whisper>=1.0.0",
+    "kokoro>=0.9.0",
     "sounddevice>=0.4.6",
     "numpy>=1.24.0",
 ]
@@ -56,6 +62,7 @@ dev = [
 
 [project.scripts]
 live-underwriter = "live_underwriter.cli:main"
+live-underwriter-api = "live_underwriter.api_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -71,3 +78,7 @@ target-version = "py310"
 [tool.mypy]
 python_version = "3.10"
 strict = true
+# Optional voice deps are only installed with `uv sync --extra voice`.
+[[tool.mypy.overrides]]
+module = ["faster_whisper", "kokoro"]
+ignore_missing_imports = true

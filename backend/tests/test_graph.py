@@ -24,9 +24,7 @@ def test_graph_has_expected_nodes() -> None:
 
 def test_policy_gate_routes_to_reject_when_unverified() -> None:
     """A missing/unverified policy should route to the reject (END) branch."""
-    graph = build_graph()
     state = UnderwritingState(policy=None)
-    route = graph._policy_gate(state) if hasattr(graph, "_policy_gate") else None
     # The gate is a module-level function; verify via the compiled graph instead.
     from live_underwriter.graph import _policy_gate
 

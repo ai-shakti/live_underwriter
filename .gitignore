@@ -14,6 +14,8 @@ env/
 # Environment
 .env
 .env.local
+# Keep the template, ignore the real one
+!.env.example
 
 # Testing
 .pytest_cache/
@@ -29,3 +31,14 @@ htmlcov/
 
 # OS
 .DS_Store
+
+# Backend runtime data
+backend/data/
+backend/logs/
+
+# Frontend / Node
+node_modules/
+dist/
+frontend/dist/
+*.local
+.vite/

@@ -49,24 +49,50 @@ flowchart TD
 
 ## Quickstart
 
-> This project uses [`uv`](https://docs.astral.sh/uv/) as its package manager.
+> This project uses [`uv`](https://docs.astral.sh/uv/) for the backend and
+> [`npm`](https://www.npmjs.com/) for the frontend.
+
+### Backend (Python / LangGraph / FastAPI)
 
 ```bash
-# 1. Clone
-git clone https://github.com/ai-shakti/live_underwriter.git
-cd live_underwriter
-
-# 2. Install dependencies (creates .venv + uv.lock)
+cd backend
 uv sync --extra dev
 
-# 3. Set your OpenAI key
-export OPENAI_API_KEY="sk-..."
+# Configure the LLM (Ollama / OpenAI-compatible). Copy the template:
+cp .env.example .env
+#   Then edit .env — set OLLAMA_MODEL (e.g. qwen2.5, qwen3, llama3.1),
+#   OLLAMA_BASE_URL, and OLLAMA_API_KEY. See .env.example for all options.
 
-# 4. Run the CLI
-uv run live-underwriter
+# Run the CLI
+uv run live-underwriter --seed-db
+uv run live-underwriter --transcript "My name is Jane Doe, policy POL-1001, coverage 500000"
 
-# 5. Run tests
+# Run the API server (http://localhost:8000)
+uv run live-underwriter-api
+# or: uv run python -m uvicorn live_underwriter.api:app --reload
+
+# Run tests
 uv run python -m pytest
+```
+
+### Frontend (Vite + React + Tailwind, light theme)
+
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:5173 (proxies /api to :8000)
+npm run build      # production build
+```
+
+### Live voice intake
+
+The web UI has a **Record voice** button that captures audio from your
+microphone, sends it to `POST /api/transcribe` (faster-whisper), and fills the
+transcript box. To enable it, install the voice extras:
+
+```bash
+cd backend
+uv sync --extra voice   # installs faster-whisper + kokoro
 ```
 
 > **Note for pyenv users:** if `uv run pytest` resolves to the wrong Python
@@ -77,24 +103,39 @@ uv run python -m pytest
 
 ```
 live_underwriter/
-├── src/live_underwriter/
-│   ├── graph.py          # LangGraph state machine
-│   ├── state.py          # Underwriting state schema
-│   ├── agents/           # Specialist agents
-│   ├── tools/            # Underwriting tools
-│   └── cli.py            # CLI entry point
-├── tests/
+├── backend/                     # Python / LangGraph / FastAPI
+│   ├── src/live_underwriter/
+│   │   ├── graph.py             # LangGraph state machine
+│   │   ├── state.py             # Underwriting state schema
+│   │   ├── agents/              # Specialist agents
+│   │   ├── tools/               # Underwriting tools (STT/TTS)
+│   │   ├── api.py               # FastAPI REST server
+│   │   ├── api_server.py        # uvicorn entry point
+│   │   ├── db.py                # SQLite repository + seed
+│   │   ├── llm.py               # Ollama LLM wiring
+│   │   └── cli.py               # CLI entry point
+│   └── tests/
+├── frontend/                    # Vite + React + Tailwind (light theme)
+│   ├── src/
+│   │   ├── App.tsx              # Main dashboard UI
+│   │   ├── api.ts               # Backend API client
+│   │   ├── types.ts             # Shared response types
+│   │   └── index.css            # Tailwind + light theme
+│   └── vite.config.ts           # Dev proxy /api -> :8000
 ├── docs/
 └── examples/
 ```
 
 ## Roadmap
 
-- [ ] Core underwriting pipeline (normalize → validate → verify → review → decide)
-- [ ] Fraud detection agent
-- [ ] Document review agent
-- [ ] Risk / decision calculation
-- [ ] Voice layer (STT/TTS)
+- [x] Core underwriting pipeline (normalize → validate → verify → review → decide)
+- [x] Fraud detection agent
+- [x] Document review agent
+- [x] Risk / decision calculation
+- [x] Voice layer (STT/TTS)
+- [x] FastAPI REST backend
+- [x] Vite + React + Tailwind frontend (light theme)
+- [x] Live voice intake in the web UI (mic → STT → transcript)
 - [ ] Human-in-the-loop review for flagged cases
 
 ## License

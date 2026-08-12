@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+/* Light theme — clean, modern, professional underwriting dashboard. */
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-800 antialiased;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
