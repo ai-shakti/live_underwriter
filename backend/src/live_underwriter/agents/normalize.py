@@ -69,7 +69,7 @@ def normalize_node(state: UnderwritingState) -> dict[str, Any]:
         return {
             "applicant": ApplicantInfo(),
             "stage": "normalize",
-            **append_audit(state, "normalize", "empty transcript", "warn"),
+            **append_audit(state, "normalize", "empty transcript", "warn", confidence=0.0),
         }
 
     llm = get_llm()
@@ -85,7 +85,7 @@ def normalize_node(state: UnderwritingState) -> dict[str, Any]:
         return {
             "applicant": ApplicantInfo(),
             "stage": "normalize",
-            **append_audit(state, "normalize", f"LLM call failed: {exc}", "error"),
+            **append_audit(state, "normalize", f"LLM call failed: {exc}", "error", confidence=0.0),
         }
 
     applicant = _parse_applicant(str(response.content))
@@ -116,9 +116,15 @@ def normalize_node(state: UnderwritingState) -> dict[str, Any]:
         else:
             logger.warning("normalize: could not normalize DOB %r", applicant.date_of_birth)
 
+    confidence = 0.9 if applicant.full_name else 0.3
     logger.info("normalize: extracted applicant %s", applicant.full_name)
     return {
         "applicant": applicant,
         "stage": "normalize",
-        **append_audit(state, "normalize", f"extracted applicant {applicant.full_name}"),
+        **append_audit(
+            state,
+            "normalize",
+            f"extracted applicant {applicant.full_name}",
+            confidence=confidence,
+        ),
     }

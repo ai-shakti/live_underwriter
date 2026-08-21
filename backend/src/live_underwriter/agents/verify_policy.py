@@ -108,7 +108,7 @@ def verify_policy_node(state: UnderwritingState, db: UnderwritingDB | None = Non
         return {
             "policy": None,
             "stage": "verify_policy",
-            **append_audit(state, "verify_policy", "no policy number provided", "warn"),
+            **append_audit(state, "verify_policy", "no policy number provided", "warn", confidence=0.0),
         }
 
     row = _find_policy(db, policy_number)
@@ -117,7 +117,7 @@ def verify_policy_node(state: UnderwritingState, db: UnderwritingDB | None = Non
         return {
             "policy": None,
             "stage": "verify_policy",
-            **append_audit(state, "verify_policy", f"policy {policy_number} not found", "warn"),
+            **append_audit(state, "verify_policy", f"policy {policy_number} not found", "warn", confidence=0.0),
         }
 
     policy = PolicyRecord(
@@ -128,9 +128,10 @@ def verify_policy_node(state: UnderwritingState, db: UnderwritingDB | None = Non
         premium=float(row["premium"]),
         verified=bool(row["verified"]),
     )
+    confidence = 0.95 if policy.verified else 0.5
     logger.info("verify_policy: policy %s verified=%s", policy_number, policy.verified)
     return {
         "policy": policy,
         "stage": "verify_policy",
-        **append_audit(state, "verify_policy", f"policy {policy_number} verified={policy.verified}"),
+        **append_audit(state, "verify_policy", f"policy {policy_number} verified={policy.verified}", confidence=confidence),
     }

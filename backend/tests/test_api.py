@@ -78,7 +78,25 @@ def test_underwrite_with_uploaded_document(monkeypatch) -> None:
                 },
             )()
 
+    class _DefaultRiskLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {"content": '{"risk_score": 20.0, "risk_level": "low", "decision": "accept", "rationale": "Standard risk profile", "key_factors": ["stable income"]}'},
+            )()
+
+    class _DefaultReviewLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {"content": '{"match_quality": "good", "flags": [], "rationale": "All details match", "confidence": 0.95}'},
+            )()
+
     monkeypatch.setattr("live_underwriter.agents.normalize.get_llm", lambda: _FakeLLM())
+    monkeypatch.setattr("live_underwriter.agents.risk_decision.get_llm", lambda: _DefaultRiskLLM())
+    monkeypatch.setattr("live_underwriter.agents.review.get_llm", lambda: _DefaultReviewLLM())
     resp = client.post(
         "/api/underwrite",
         json={
@@ -127,7 +145,25 @@ def test_underwrite_accept_path(monkeypatch) -> None:
                 },
             )()
 
+    class _DefaultRiskLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {"content": '{"risk_score": 20.0, "risk_level": "low", "decision": "accept", "rationale": "Standard risk profile", "key_factors": ["stable income"]}'},
+            )()
+
+    class _DefaultReviewLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {"content": '{"match_quality": "good", "flags": [], "rationale": "All details match", "confidence": 0.95}'},
+            )()
+
     monkeypatch.setattr("live_underwriter.agents.normalize.get_llm", lambda: _FakeLLM())
+    monkeypatch.setattr("live_underwriter.agents.risk_decision.get_llm", lambda: _DefaultRiskLLM())
+    monkeypatch.setattr("live_underwriter.agents.review.get_llm", lambda: _DefaultReviewLLM())
     resp = client.post(
         "/api/underwrite",
         json={"transcript": "Jane Doe policy POL-1001 coverage 500000 income 120000"},
@@ -156,7 +192,8 @@ def test_underwrite_reject_path(monkeypatch) -> None:
     assert resp.status_code == 200
     body = resp.json()
     assert body["decision"] is None
-    assert body["stage"] == "verify_policy"
+    # With the data quality gate, missing critical fields stops at validate
+    assert body["stage"] in ("validate", "verify_policy")
     # The normalize failure should be recorded in the audit trail.
     assert any(e["outcome"] == "error" for e in body["audit_trail"])
 
@@ -194,7 +231,25 @@ def test_underwrite_creates_review_for_flagged_case(monkeypatch) -> None:
                 },
             )()
 
+    class _DefaultRiskLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {"content": '{"risk_score": 50.0, "risk_level": "medium", "decision": "review", "rationale": "Flagged case", "key_factors": ["document flags"]}'},
+            )()
+
+    class _DefaultReviewLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {"content": '{"match_quality": "good", "flags": [], "rationale": "All details match", "confidence": 0.95}'},
+            )()
+
     monkeypatch.setattr("live_underwriter.agents.normalize.get_llm", lambda: _FlaggedLLM())
+    monkeypatch.setattr("live_underwriter.agents.risk_decision.get_llm", lambda: _DefaultRiskLLM())
+    monkeypatch.setattr("live_underwriter.agents.review.get_llm", lambda: _DefaultReviewLLM())
     resp = client.post(
         "/api/underwrite",
         json={"transcript": "Maria Garcia policy POL-2003 coverage 150000 income 45000"},
@@ -224,7 +279,25 @@ def test_review_list_and_resolve(monkeypatch) -> None:
                 },
             )()
 
+    class _DefaultRiskLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {"content": '{"risk_score": 50.0, "risk_level": "medium", "decision": "review", "rationale": "Flagged case", "key_factors": ["document flags"]}'},
+            )()
+
+    class _DefaultReviewLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {"content": '{"match_quality": "good", "flags": [], "rationale": "All details match", "confidence": 0.95}'},
+            )()
+
     monkeypatch.setattr("live_underwriter.agents.normalize.get_llm", lambda: _FlaggedLLM())
+    monkeypatch.setattr("live_underwriter.agents.risk_decision.get_llm", lambda: _DefaultRiskLLM())
+    monkeypatch.setattr("live_underwriter.agents.review.get_llm", lambda: _DefaultReviewLLM())
     client.post(
         "/api/underwrite",
         json={"transcript": "Maria Garcia policy POL-2003 coverage 150000 income 45000"},

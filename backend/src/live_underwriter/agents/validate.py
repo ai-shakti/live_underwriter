@@ -57,11 +57,11 @@ def validate_node(state: UnderwritingState) -> dict[str, Any]:
         logger.warning("validate: %d issue(s): %s", len(errors), errors)
         return {
             "stage": "validate",
-            **append_audit(state, "validate", "; ".join(errors), "warn"),
+            **append_audit(state, "validate", "; ".join(errors), "warn", confidence=0.5),
         }
 
     logger.info("validate: all required fields present")
     return {
         "stage": "validate",
-        **append_audit(state, "validate", "all required fields valid"),
+        **append_audit(state, "validate", "all required fields valid", confidence=1.0),
     }

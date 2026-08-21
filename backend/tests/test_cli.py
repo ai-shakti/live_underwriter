@@ -31,6 +31,28 @@ class _FakeLLM:
 def _mock_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("live_underwriter.agents.normalize.get_llm", lambda: _FakeLLM())
 
+    # Also mock the risk decision LLM to avoid real API calls
+    class _DefaultRiskLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {"content": '{"risk_score": 20.0, "risk_level": "low", "decision": "accept", "rationale": "Standard risk profile", "key_factors": ["stable income"]}'},
+            )()
+
+    monkeypatch.setattr("live_underwriter.agents.risk_decision.get_llm", lambda: _DefaultRiskLLM())
+
+    # Mock the review LLM to avoid real API calls
+    class _DefaultReviewLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {"content": '{"match_quality": "good", "flags": [], "rationale": "All details match", "confidence": 0.95}'},
+            )()
+
+    monkeypatch.setattr("live_underwriter.agents.review.get_llm", lambda: _DefaultReviewLLM())
+
 
 @pytest.fixture(autouse=True)
 def _seed_default_db() -> None:
@@ -106,6 +128,16 @@ def test_full_graph_robert_high_risk(monkeypatch: pytest.MonkeyPatch) -> None:
             )()
 
     monkeypatch.setattr("live_underwriter.agents.normalize.get_llm", lambda: _RobertLLM())
+    # Also mock the risk decision LLM to return a high-risk assessment
+    class _HighRiskLLM:
+        def invoke(self, messages):
+            return type(
+                "R",
+                (),
+                {"content": '{"risk_score": 65.0, "risk_level": "high", "decision": "decline", "rationale": "High coverage-to-income ratio", "key_factors": ["high coverage"]}'},
+            )()
+
+    monkeypatch.setattr("live_underwriter.agents.risk_decision.get_llm", lambda: _HighRiskLLM())
     app = compile_graph()
     result = app.invoke({"transcript": "Robert Chen policy POL-2002 coverage 1000000 income 300000"})
     # High coverage + premium pushes risk up; high income offsets it -> medium (review).

@@ -104,11 +104,11 @@ def fraud_check_node(state: UnderwritingState) -> dict[str, Any]:
         return {
             "risk": state.risk.model_copy(update={"flags": [*state.risk.flags, *flags]}),
             "stage": "fraud_check",
-            **append_audit(state, "fraud_check", "; ".join(flags), "warn"),
+            **append_audit(state, "fraud_check", "; ".join(flags), "warn", confidence=0.3),
         }
 
     logger.info("fraud_check: no red flags")
     return {
         "stage": "fraud_check",
-        **append_audit(state, "fraud_check", "no red flags detected"),
+        **append_audit(state, "fraud_check", "no red flags detected", confidence=0.95),
     }

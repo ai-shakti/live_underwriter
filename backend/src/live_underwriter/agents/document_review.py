@@ -82,11 +82,11 @@ def document_review_node(state: UnderwritingState) -> dict[str, Any]:
         return {
             "risk": state.risk.model_copy(update={"flags": [*state.risk.flags, *flags]}),
             "stage": "document_review",
-            **append_audit(state, "document_review", "; ".join(flags), "warn"),
+            **append_audit(state, "document_review", "; ".join(flags), "warn", confidence=0.4),
         }
 
     logger.info("document_review: no document findings")
     return {
         "stage": "document_review",
-        **append_audit(state, "document_review", "no document findings"),
+        **append_audit(state, "document_review", "no document findings", confidence=0.9),
     }
