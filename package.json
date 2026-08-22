@@ -1,0 +1,27 @@
+{
+  "name": "live_underwriter",
+  "version": "1.0.0",
+  "description": "**AI underwriting analyst agent team** — live, voice-driven risk assessment, policy verification, and decisioning.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ai-shakti/live_underwriter.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/ai-shakti/live_underwriter/issues"
+  },
+  "homepage": "https://github.com/ai-shakti/live_underwriter#readme",
+  "dependencies": {
+    "playwright": "^1.62.1"
+  }
+}
